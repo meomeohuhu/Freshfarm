@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { initDatabase, query, queryOne, isPgConnected, sqliteDb, isMemoryDbActive } from './db.js';
+import { initDatabase, query, queryOne, isPgConnected } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -8,11 +8,11 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize database on startup
+// Initialize PostgreSQL database on startup
 initDatabase();
 
 // ----------------------------------------------------
-// Healthcheck & DB Engine Status
+// Healthcheck & PostgreSQL DB Engine Status
 // ----------------------------------------------------
 app.get('/api/health', async (req, res) => {
   try {
@@ -20,8 +20,8 @@ app.get('/api/health', async (req, res) => {
     const prodCount = await queryOne('SELECT COUNT(*) as count FROM products');
     res.json({
       status: 'OK',
-      message: 'FreshFarm Express Backend REST API running',
-      database: isPgConnected ? 'PostgreSQL 14+ (pg Pool)' : (sqliteDb ? 'SQLite3 Fallback' : 'In-Memory Store Engine (Zero-Config Active)'),
+      message: 'FreshFarm Express Backend REST API running (Pure PostgreSQL)',
+      database: isPgConnected ? 'PostgreSQL 14+ (Active)' : 'PostgreSQL Connecting...',
       stats: { users: parseInt(userCount?.count || 0, 10), products: parseInt(prodCount?.count || 0, 10) },
       adminAccount: { email: 'admin@freshfarm.vn', password: 'admin123', role: 'admin' }
     });
