@@ -22,8 +22,7 @@ app.get('/api/health', async (req, res) => {
       status: 'OK',
       message: 'FreshFarm Express Backend REST API running (Pure PostgreSQL)',
       database: isPgConnected ? 'PostgreSQL 14+ (Active)' : 'PostgreSQL Connecting...',
-      stats: { users: parseInt(userCount?.count || 0, 10), products: parseInt(prodCount?.count || 0, 10) },
-      adminAccount: { email: 'admin@freshfarm.vn', password: 'admin123', role: 'admin' }
+      stats: { users: parseInt(userCount?.count || 0, 10), products: parseInt(prodCount?.count || 0, 10) }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -72,15 +71,16 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Email này đã được đăng ký tài khoản' });
     }
 
+    const safeRole = (role === 'admin') ? 'consumer' : (role || 'consumer');
     const userId = `U${Date.now().toString().slice(-5)}`;
     await query(
       'INSERT INTO users (id, name, email, password, role, phone, address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [userId, name, email, password || 'admin123', role || 'consumer', phone || '', address || '', 'Hoạt động']
+      [userId, name, email, password || '123456', safeRole, phone || '', address || '', 'Hoạt động']
     );
 
     res.status(201).json({
       message: 'Đăng ký tài khoản mới thành công',
-      user: { id: userId, name, email, role: role || 'consumer' }
+      user: { id: userId, name, email, role: safeRole }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -107,7 +107,13 @@ app.get('/api/products', async (req, res) => {
       ...p,
       price: parseFloat(p.price),
       rating: parseFloat(p.rating || 5.0),
-      certifications: p.certifications ? p.certifications.split(',') : []
+      reviewsCount: parseInt(p.reviews_count || p.reviewsCount || 0, 10),
+      farmName: p.farm_name || p.farmName || '',
+      supplierName: p.supplier_name || p.supplierName || '',
+      batchCode: p.batch_code || p.batchCode || '',
+      harvestDate: p.harvest_date || p.harvestDate || '',
+      expiryDate: p.expiry_date || p.expiryDate || '',
+      certifications: p.certifications ? (Array.isArray(p.certifications) ? p.certifications : p.certifications.split(',')) : []
     }));
     res.json(formatted);
   } catch (err) {

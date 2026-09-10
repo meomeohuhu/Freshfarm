@@ -3,8 +3,9 @@ const { Pool } = pkg;
 
 // PostgreSQL Connection Configuration (Strict PostgreSQL Driver Only)
 let dbConnectionString = process.env.DATABASE_URL;
-if (dbConnectionString && !dbConnectionString.includes('sslmode=')) {
-  dbConnectionString += dbConnectionString.includes('?') ? '&sslmode=require' : '?sslmode=require';
+if (dbConnectionString) {
+  // Strip any sslmode query parameter to prevent pg-connection-string from overriding rejectUnauthorized: false (fixes self-signed certificate error on Render)
+  dbConnectionString = dbConnectionString.replace(/([?&])sslmode=[^&]*&?/g, '$1').replace(/[?&]$/, '');
 }
 
 const pgConfig = dbConnectionString
