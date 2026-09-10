@@ -1,12 +1,13 @@
 import pkg from 'pg';
 const { Pool } = pkg;
-import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const sqliteDbPath = path.join(__dirname, 'freshfarm.db');
+
+export let sqliteDb = null;
 
 // PostgreSQL Pool Connection Configuration
 const pgConfig = process.env.DATABASE_URL
@@ -42,7 +43,7 @@ export async function query(sql, params = []) {
       console.error('❌ PostgreSQL Query Error:', err.message);
       throw err;
     }
-  } else {
+  } else if (sqliteDb) {
     // Fallback to SQLite query execution
     return new Promise((resolve, reject) => {
       let sqliteSql = sql;
@@ -61,6 +62,8 @@ export async function query(sql, params = []) {
         });
       }
     });
+  } else {
+    throw new Error('Cơ sở dữ liệu chưa sẵn sàng.');
   }
 }
 
@@ -69,10 +72,6 @@ export async function queryOne(sql, params = []) {
   const rows = await query(sql, params);
   return rows[0] || null;
 }
-
-// Fallback SQLite instance
-const verboseSqlite = sqlite3.verbose();
-export const sqliteDb = new verboseSqlite.Database(sqliteDbPath);
 
 // Initialize Database & Seed Data
 export async function initDatabase() {
@@ -90,7 +89,7 @@ export async function initDatabase() {
         id VARCHAR(50) PRIMARY KEY,
         name VARCHAR(150) NOT NULL,
         email VARCHAR(150) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL DEFAULT 'admin123',
+        password VARCHAR(255) NOT NULL DEFAULT '123456',
         role VARCHAR(50) NOT NULL CHECK(role IN ('admin', 'producer', 'supplier', 'transporter', 'consumer')),
         phone VARCHAR(30),
         address TEXT,
@@ -209,45 +208,53 @@ export async function initDatabase() {
     }
 
   } catch (err) {
-    console.warn('⚠️ Chưa thể kết nối PostgreSQL local (Chưa bật service PostgreSQL local hoặc sai mật khẩu pg). Chuyển sang cơ chế SQLite Engine tự động:', err.message);
+    console.warn('⚠️ Chưa kết nối PostgreSQL server. Chuyển sang cơ chế SQLite Engine tự động:', err.message);
     isPgConnected = false;
-    initSqliteDatabase();
+    await initSqliteDatabase();
   }
 }
 
-// Fallback SQLite Initializer
-function initSqliteDatabase() {
-  sqliteDb.serialize(() => {
-    sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL DEFAULT '123456',
-        role TEXT NOT NULL,
-        phone TEXT,
-        address TEXT,
-        status TEXT NOT NULL DEFAULT 'Hoạt động',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+// Fallback Dynamic SQLite Initializer
+async function initSqliteDatabase() {
+  try {
+    const sqlite3Module = await import('sqlite3');
+    const sqlite3 = sqlite3Module.default || sqlite3Module;
+    const verboseSqlite = sqlite3.verbose();
+    sqliteDb = new verboseSqlite.Database(sqliteDbPath);
 
-    // Ensure all 5 Role accounts exist in SQLite fallback
-    const defaultUsers = [
-      ['U000_ADMIN', 'Quản Trị Viên Hệ Thống (System Admin)', 'admin@freshfarm.vn', 'admin123', 'admin', '0900000999', 'Trung tâm Điều hành FreshFarm Platform', 'Hoạt động'],
-      ['U002_PROD', 'Trang trại GreenFarm Đà Lạt', 'producer@freshfarm.vn', '123456', 'producer', '0914222333', 'Phường 7, TP. Đà Lạt', 'Hoạt động'],
-      ['U003_SUPP', 'Công ty Phân phối Việt Nông', 'supplier@freshfarm.vn', '123456', 'supplier', '0988333444', 'KCN Hòa Cầm, Đà Nẵng', 'Hoạt động'],
-      ['U004_TRAN', 'Viettel Post Nông Sản', 'transporter@freshfarm.vn', '123456', 'transporter', '0905999888', 'Hải Châu, Đà Nẵng', 'Hoạt động'],
-      ['U005_CONS', 'Khách hàng Nguyễn Văn Hùng', 'consumer@freshfarm.vn', '123456', 'consumer', '0905123456', '124 Nguyễn Văn Linh, Đà Nẵng', 'Hoạt động']
-    ];
+    sqliteDb.serialize(() => {
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL DEFAULT '123456',
+          role TEXT NOT NULL,
+          phone TEXT,
+          address TEXT,
+          status TEXT NOT NULL DEFAULT 'Hoạt động',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-    const stmt = sqliteDb.prepare(`
-      INSERT INTO users (id, name, email, password, role, phone, address, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(email) DO UPDATE SET password=excluded.password, role=excluded.role, name=excluded.name
-    `);
-    defaultUsers.forEach(u => stmt.run(u));
-    stmt.finalize();
-    console.log('🔑 Đã đồng bộ thành công 5 Tài khoản mẫu cho 5 Vai trò RBAC vào CSDL!');
-  });
+      const defaultUsers = [
+        ['U000_ADMIN', 'Quản Trị Viên Hệ Thống (System Admin)', 'admin@freshfarm.vn', 'admin123', 'admin', '0900000999', 'Trung tâm Điều hành FreshFarm Platform', 'Hoạt động'],
+        ['U002_PROD', 'Trang trại GreenFarm Đà Lạt', 'producer@freshfarm.vn', '123456', 'producer', '0914222333', 'Phường 7, TP. Đà Lạt', 'Hoạt động'],
+        ['U003_SUPP', 'Công ty Phân phối Việt Nông', 'supplier@freshfarm.vn', '123456', 'supplier', '0988333444', 'KCN Hòa Cầm, Đà Nẵng', 'Hoạt động'],
+        ['U004_TRAN', 'Viettel Post Nông Sản', 'transporter@freshfarm.vn', '123456', 'transporter', '0905999888', 'Hải Châu, Đà Nẵng', 'Hoạt động'],
+        ['U005_CONS', 'Khách hàng Nguyễn Văn Hùng', 'consumer@freshfarm.vn', '123456', 'consumer', '0905123456', '124 Nguyễn Văn Linh, Đà Nẵng', 'Hoạt động']
+      ];
+
+      const stmt = sqliteDb.prepare(`
+        INSERT INTO users (id, name, email, password, role, phone, address, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(email) DO UPDATE SET password=excluded.password, role=excluded.role, name=excluded.name
+      `);
+      defaultUsers.forEach(u => stmt.run(u));
+      stmt.finalize();
+      console.log('🔑 Đã đồng bộ thành công 5 Tài khoản mẫu cho 5 Vai trò RBAC vào CSDL SQLite!');
+    });
+  } catch (err) {
+    console.warn('⚠️ Không thể tải SQLite addon (bỏ qua nếu chạy thuần PostgreSQL trên Render):', err.message);
+  }
 }
