@@ -1,32 +1,7 @@
 import React, { useState } from 'react';
 import { Truck, PlusCircle, CheckCircle2, Clock, MapPin, DollarSign, Package, Search, ShieldCheck, ArrowRight } from 'lucide-react';
 
-export default function TransporterView({ orders, setOrders }) {
-  const [shippingBills, setShippingBills] = useState([
-    {
-      id: 'SHIP-20260910-01',
-      orderId: 'ORD-20260910-88',
-      customerName: 'Nguyễn Văn Hùng',
-      address: '124 Nguyễn Văn Linh, Đà Nẵng',
-      partnerName: 'Viettel Post Nông Sản',
-      trackingCode: 'VTP-982144',
-      shippingFee: 25000,
-      status: 'Đang vận chuyển',
-      estimatedDelivery: '2026-09-11 15:00'
-    },
-    {
-      id: 'SHIP-20260909-02',
-      orderId: 'ORD-20260909-12',
-      customerName: 'Lê Thị Diệu Tâm',
-      address: '45 Trần Phú, Hải Châu, Đà Nẵng',
-      partnerName: 'Giao Hàng Nhanh Express',
-      trackingCode: 'GHN-771029',
-      shippingFee: 20000,
-      status: 'Đã giao hàng thành công',
-      estimatedDelivery: '2026-09-10 11:30'
-    }
-  ]);
-
+export default function TransporterView({ orders, shippingBills = [], setShippingBills, onCreateShippingBill, onUpdateOrderStatus }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBill, setNewBill] = useState({
     orderId: '',
@@ -43,31 +18,25 @@ export default function TransporterView({ orders, setOrders }) {
     const created = {
       id: `SHIP-${Date.now().toString().slice(-6)}`,
       orderId: newBill.orderId,
-      customerName: 'Khách hàng FreshFarm',
-      address: 'TP. Đà Nẵng',
       partnerName: newBill.partnerName,
       trackingCode: newBill.trackingCode || `TRK-${Math.floor(100000 + Math.random() * 900000)}`,
       shippingFee: Number(newBill.shippingFee),
-      status: 'Mới tạo vận đơn',
+      status: 'Đã tạo vận đơn',
       estimatedDelivery: newBill.estimatedDelivery || '24h tới'
     };
 
-    setShippingBills([created, ...shippingBills]);
-    setShowAddModal(false);
-
-    // Sync order status to Shipping
-    if (setOrders) {
-      setOrders(prev => prev.map(o => o.id === newBill.orderId ? { ...o, orderStatus: 'Shipping', statusText: 'Đã giao cho Vận chuyển' } : o));
+    if (onCreateShippingBill) {
+      onCreateShippingBill(created);
+    } else if (setShippingBills) {
+      setShippingBills([created, ...shippingBills]);
     }
+    setShowAddModal(false);
   };
 
   const updateBillStatus = (billId, newStatus) => {
-    setShippingBills(shippingBills.map(b => {
-      if (b.id === billId) {
-        return { ...b, status: newStatus };
-      }
-      return b;
-    }));
+    if (setShippingBills) {
+      setShippingBills(shippingBills.map(b => b.id === billId ? { ...b, status: newStatus } : b));
+    }
   };
 
   const totalFees = shippingBills.reduce((sum, b) => sum + b.shippingFee, 0);

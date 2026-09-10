@@ -15,22 +15,11 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 
-export default function AdminView({ products, orders, batches }) {
-  const [usersList, setUsersList] = useState([
-    { id: 'U001', name: 'Trần Dương Thái', email: 'thai.23it249@vku.udn.vn', role: 'Admin', status: 'Hoạt động' },
-    { id: 'U002', name: 'Trang trại GreenFarm Đà Lạt', email: 'contact@greenfarm.dalat', role: 'Producer', status: 'Hoạt động' },
-    { id: 'U003', name: 'Công ty Phân phối Việt Nông', email: 'sales@vietnong.vn', role: 'Supplier', status: 'Hoạt động' },
-    { id: 'U004', name: 'Nguyễn Văn Hùng', email: 'hung.nguyen@gmail.com', role: 'Consumer', status: 'Hoạt động' },
-    { id: 'U005', name: 'Lê Thị Diệu Tâm', email: 'tam.23it244@vku.udn.vn', role: 'Consumer', status: 'Hoạt động' }
-  ]);
-
-  const toggleUserStatus = (userId) => {
-    setUsersList(usersList.map((u) => {
-      if (u.id === userId) {
-        return { ...u, status: u.status === 'Hoạt động' ? 'Tạm khóa' : 'Hoạt động' };
-      }
-      return u;
-    }));
+export default function AdminView({ products, orders, batches, usersList = [], onToggleUserStatus }) {
+  const toggleUserStatus = (userId, currentStatus) => {
+    if (onToggleUserStatus) {
+      onToggleUserStatus(userId, currentStatus);
+    }
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -241,7 +230,7 @@ export default function AdminView({ products, orders, batches }) {
                   </td>
                   <td className="px-5 py-4 text-right">
                     <button
-                      onClick={() => toggleUserStatus(user.id)}
+                      onClick={() => toggleUserStatus(user.id, user.status)}
                       className={`btn text-xs py-1.5 px-3 ${
                         user.status === 'Hoạt động' 
                           ? 'btn-secondary text-rose-600 hover:bg-rose-50' 

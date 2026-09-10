@@ -12,7 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-export default function ProducerView({ batches, setBatches, products }) {
+export default function ProducerView({ batches, setBatches, products, onCreateBatch }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBatch, setNewBatch] = useState({
     productName: '',
@@ -37,7 +37,11 @@ export default function ProducerView({ batches, setBatches, products }) {
       area: newBatch.area
     };
 
-    setBatches([created, ...batches]);
+    if (onCreateBatch) {
+      onCreateBatch(created);
+    } else if (setBatches) {
+      setBatches([created, ...batches]);
+    }
     setShowAddModal(false);
     setNewBatch({
       productName: '',

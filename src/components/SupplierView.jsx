@@ -12,16 +12,20 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-export default function SupplierView({ products, orders, setOrders }) {
+export default function SupplierView({ products, orders, setOrders, onUpdateOrderStatus }) {
   const [activeTab, setActiveTab] = useState('inventory'); // inventory | orders
 
   const updateOrderStatus = (orderId, newStatus, statusText) => {
-    setOrders(orders.map((o) => {
-      if (o.id === orderId) {
-        return { ...o, orderStatus: newStatus, statusText: statusText };
-      }
-      return o;
-    }));
+    if (onUpdateOrderStatus) {
+      onUpdateOrderStatus(orderId, newStatus, statusText);
+    } else if (setOrders) {
+      setOrders(orders.map((o) => {
+        if (o.id === orderId) {
+          return { ...o, orderStatus: newStatus, statusText: statusText };
+        }
+        return o;
+      }));
+    }
   };
 
   const getStatusBadge = (status) => {

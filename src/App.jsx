@@ -10,47 +10,52 @@ import CartModal from './components/CartModal';
 import TraceabilityModal from './components/TraceabilityModal';
 import AuthModal from './components/AuthModal';
 import { apiService } from './services/api';
-import { 
-  INITIAL_PRODUCTS, 
-  INITIAL_CATEGORIES, 
-  INITIAL_BATCHES, 
-  INITIAL_ORDERS 
-} from './data/mockData';
 
 export default function App() {
   const [currentRole, setRole] = useState('consumer'); // 'consumer' | 'producer' | 'supplier' | 'transporter' | 'admin' | 'database'
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
-  const [categories] = useState(INITIAL_CATEGORIES);
-  const [batches, setBatches] = useState(INITIAL_BATCHES);
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
-  const [cart, setCart] = useState([
-    { ...INITIAL_PRODUCTS[0], quantity: 2 },
-    { ...INITIAL_PRODUCTS[1], quantity: 1 }
+  const [products, setProducts] = useState([]);
+  const [categories] = useState([
+    { id: 'veggies', name: 'Rau Củ Hữu Cơ', icon: 'Sprout' },
+    { id: 'fruits', name: 'Trái Cây VietGAP', icon: 'Apple' },
+    { id: 'meat', name: 'Thịt & Hải Sản Thảo Mộc', icon: 'Beef' },
+    { id: 'processed', name: 'Nông Sản Chế Biến', icon: 'Package' }
   ]);
+  const [batches, setBatches] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [shippingBills, setShippingBills] = useState([]);
+  const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeTraceabilityProduct, setActiveTraceabilityProduct] = useState(null);
 
-  // Load live data from Express Backend SQLite Database
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const fetchedProds = await apiService.getProducts();
-        if (fetchedProds && fetchedProds.length > 0) setProducts(fetchedProds);
+  // Fetch live real data from PostgreSQL API
+  const refreshAllData = async () => {
+    try {
+      const fetchedProds = await apiService.getProducts();
+      if (fetchedProds) setProducts(fetchedProds);
 
-        const fetchedBatches = await apiService.getBatches();
-        if (fetchedBatches && fetchedBatches.length > 0) setBatches(fetchedBatches);
+      const fetchedBatches = await apiService.getBatches();
+      if (fetchedBatches) setBatches(fetchedBatches);
 
-        const fetchedOrders = await apiService.getOrders();
-        if (fetchedOrders && fetchedOrders.length > 0) setOrders(fetchedOrders);
-      } catch (err) {
-        console.warn('⚠️ Server backend chưa phản hồi hoặc chưa chạy, hệ thống đang dùng dữ liệu khởi tạo local state:', err.message);
-      }
+      const fetchedOrders = await apiService.getOrders();
+      if (fetchedOrders) setOrders(fetchedOrders);
+
+      const fetchedUsers = await apiService.getUsers();
+      if (fetchedUsers) setUsersList(fetchedUsers);
+
+      const fetchedShipping = await apiService.getShippingBills();
+      if (fetchedShipping) setShippingBills(fetchedShipping);
+    } catch (err) {
+      console.warn('⚠️ API fetch error:', err.message);
     }
-    loadData();
+  };
+
+  useEffect(() => {
+    refreshAllData();
   }, []);
 
   // Cart operations
@@ -83,20 +88,56 @@ export default function App() {
   };
 
   const handlePlaceOrder = async (newOrder) => {
-    setOrders([newOrder, ...orders]);
+    setOrders(prev => [newOrder, ...prev]);
     try {
       await apiService.createOrder(newOrder);
+      await refreshAllData();
     } catch (err) {
-      console.warn('Sync order to DB failed:', err.message);
+      console.error('Lỗi lưu đơn hàng vào PostgreSQL:', err.message);
     }
   };
 
   const handleCreateBatch = async (newBatch) => {
-    setBatches([newBatch, ...batches]);
+    setBatches(prev => [newBatch, ...prev]);
     try {
       await apiService.createBatch(newBatch);
+      await refreshAllData();
     } catch (err) {
-      console.warn('Sync batch to DB failed:', err.message);
+      console.error('Lỗi lưu lô thu hoạch vào PostgreSQL:', err.message);
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId, newStatus, statusText) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, orderStatus: newStatus, statusText } : o));
+    try {
+      await apiService.updateOrderStatus(orderId, newStatus, statusText);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Lỗi cập nhật trạng thái đơn hàng trong PostgreSQL:', err.message);
+    }
+  };
+
+  const handleToggleUserStatus = async (userId, currentStatus) => {
+    const nextStatus = currentStatus === 'Hoạt động' ? 'Tạm khóa' : 'Hoạt động';
+    setUsersList(prev => prev.map(u => u.id === userId ? { ...u, status: nextStatus } : u));
+    try {
+      await apiService.toggleUserStatus(userId, nextStatus);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Lỗi cập nhật người dùng trong PostgreSQL:', err.message);
+    }
+  };
+
+  const handleCreateShippingBill = async (bill) => {
+    setShippingBills(prev => [bill, ...prev]);
+    try {
+      await apiService.createShippingBill(bill);
+      if (bill.orderId) {
+        await apiService.updateOrderStatus(bill.orderId, 'Shipping', 'Đã giao cho Đơn vị Vận chuyển');
+      }
+      await refreshAllData();
+    } catch (err) {
+      console.error('Lỗi lưu vận đơn vào PostgreSQL:', err.message);
     }
   };
 
@@ -105,6 +146,7 @@ export default function App() {
     if (user.role) {
       setRole(user.role);
     }
+    refreshAllData();
   };
 
   const handleLogout = () => {
@@ -152,13 +194,17 @@ export default function App() {
             products={products}
             orders={orders}
             setOrders={setOrders}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
           />
         )}
 
         {currentRole === 'transporter' && (
           <TransporterView
             orders={orders}
-            setOrders={setOrders}
+            shippingBills={shippingBills}
+            setShippingBills={setShippingBills}
+            onCreateShippingBill={handleCreateShippingBill}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
           />
         )}
 
@@ -167,6 +213,8 @@ export default function App() {
             products={products}
             orders={orders}
             batches={batches}
+            usersList={usersList}
+            onToggleUserStatus={handleToggleUserStatus}
           />
         )}
 
