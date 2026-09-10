@@ -9,4 +9,4 @@ services:
       - key: NODE_VERSION
         value: 20.18.0
       - key: DATABASE_URL
-        value: postgresql://freshfarm:yMOjDnD1YW604685saPQOFX1A6Tj5pCL@dpg-dah9ugeq1p3s73b86ndg-a.singapore-postgres.render.com/freshfarm_db_7pjf
+        value: postgresql://freshfarm:yMOjDnD1YW604685saPQOFX1A6Tj5pCL@dpg-dah9ugeq1p3s73b86ndg-a.singapore-postgres.render.com/freshfarm_db_7pjf?sslmode=require

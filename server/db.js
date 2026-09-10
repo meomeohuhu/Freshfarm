@@ -2,9 +2,14 @@ import pkg from 'pg';
 const { Pool } = pkg;
 
 // PostgreSQL Connection Configuration (Strict PostgreSQL Driver Only)
-const pgConfig = process.env.DATABASE_URL
+let dbConnectionString = process.env.DATABASE_URL;
+if (dbConnectionString && !dbConnectionString.includes('sslmode=')) {
+  dbConnectionString += dbConnectionString.includes('?') ? '&sslmode=require' : '?sslmode=require';
+}
+
+const pgConfig = dbConnectionString
   ? { 
-      connectionString: process.env.DATABASE_URL,
+      connectionString: dbConnectionString,
       ssl: { rejectUnauthorized: false }
     }
   : {
