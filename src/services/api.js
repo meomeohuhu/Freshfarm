@@ -57,5 +57,6 @@ export const apiService = {
   validatePromotion: (code, orderAmount) => apiRequest('/promotions/validate', 'POST', { code, orderAmount }),
 
   // SQL Console
+  // Care
   executeSqlQuery: (sql) => apiRequest('/db/query', 'POST', { sql }),
 };
