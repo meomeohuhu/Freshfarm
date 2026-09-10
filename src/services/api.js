@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
 async function apiRequest(endpoint, method = 'GET', data = null) {
   try {
@@ -10,9 +10,16 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
       options.body = JSON.stringify(data);
     }
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-    const json = await response.json();
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Không thể phản hồi định dạng dữ liệu (HTTP ${response.status})`);
+    }
+
     if (!response.ok) {
-      throw new Error(json.error || 'Lỗi khi gọi API');
+      throw new Error(json.error || json.message || 'Lỗi khi gọi API');
     }
     return json;
   } catch (err) {
