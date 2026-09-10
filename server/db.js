@@ -178,11 +178,12 @@ function memoryQuery(sql, params = []) {
   return [];
 }
 
-// PostgreSQL Pool Connection Configuration
+// PostgreSQL Pool Connection Configuration (Optional - Fast Fallback if Not Available)
 const pgConfig = process.env.DATABASE_URL
   ? { 
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 2000
     }
   : {
     host: process.env.PGHOST || 'localhost',
@@ -190,6 +191,7 @@ const pgConfig = process.env.DATABASE_URL
     password: process.env.PGPASSWORD || 'admin',
     database: process.env.PGDATABASE || 'freshfarm_db',
     port: parseInt(process.env.PGPORT || '5432', 10),
+    connectionTimeoutMillis: 1500
   };
 
 export const pgPool = new Pool(pgConfig);
