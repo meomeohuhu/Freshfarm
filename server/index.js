@@ -286,6 +286,23 @@ app.post('/api/db/query', async (req, res) => {
   }
 });
 
+// Serve static files from 'dist' directory when built for production
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '../dist');
+
+app.use(express.static(distPath));
+
+// Fallback all non-API GET requests to index.html (SPA client-side routing)
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  }
+});
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`🚀 FreshFarm Backend REST API running on http://localhost:${PORT}`);

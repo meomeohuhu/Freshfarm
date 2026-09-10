@@ -10,7 +10,10 @@ const sqliteDbPath = path.join(__dirname, 'freshfarm.db');
 
 // PostgreSQL Pool Connection Configuration
 const pgConfig = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL }
+  ? { 
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    }
   : {
     host: process.env.PGHOST || 'localhost',
     user: process.env.PGUSER || 'postgres',
