@@ -55,7 +55,22 @@ export default function App() {
   };
 
   useEffect(() => {
-    refreshAllData();
+    async function initSession() {
+      const token = localStorage.getItem('freshfarm_token');
+      if (token) {
+        try {
+          const user = await apiService.getMe();
+          if (user) {
+            setCurrentUser(user);
+            if (user.role) setRole(user.role);
+          }
+        } catch {
+          localStorage.removeItem('freshfarm_token');
+        }
+      }
+      await refreshAllData();
+    }
+    initSession();
   }, []);
 
   // Cart operations
@@ -94,6 +109,7 @@ export default function App() {
       await refreshAllData();
     } catch (err) {
       console.error('Lỗi lưu đơn hàng vào PostgreSQL:', err.message);
+      alert(`Lỗi đặt hàng: ${err.message}`);
     }
   };
 
@@ -104,6 +120,7 @@ export default function App() {
       await refreshAllData();
     } catch (err) {
       console.error('Lỗi lưu lô thu hoạch vào PostgreSQL:', err.message);
+      alert(`Lỗi tạo lô thu hoạch: ${err.message}`);
     }
   };
 
@@ -114,17 +131,19 @@ export default function App() {
       await refreshAllData();
     } catch (err) {
       console.error('Lỗi cập nhật trạng thái đơn hàng trong PostgreSQL:', err.message);
+      alert(`Lỗi chuyển trạng thái: ${err.message}`);
     }
   };
 
   const handleToggleUserStatus = async (userId, currentStatus) => {
-    const nextStatus = currentStatus === 'Hoạt động' ? 'Tạm khóa' : 'Hoạt động';
+    const nextStatus = currentStatus === 'Hoạt động' || currentStatus === 'active' ? 'blocked' : 'active';
     setUsersList(prev => prev.map(u => u.id === userId ? { ...u, status: nextStatus } : u));
     try {
       await apiService.toggleUserStatus(userId, nextStatus);
       await refreshAllData();
     } catch (err) {
       console.error('Lỗi cập nhật người dùng trong PostgreSQL:', err.message);
+      alert(`Lỗi khóa/mở khóa tài khoản: ${err.message}`);
     }
   };
 
@@ -132,16 +151,14 @@ export default function App() {
     setShippingBills(prev => [bill, ...prev]);
     try {
       await apiService.createShippingBill(bill);
-      if (bill.orderId) {
-        await apiService.updateOrderStatus(bill.orderId, 'Shipping', 'Đã giao cho Đơn vị Vận chuyển');
-      }
       await refreshAllData();
     } catch (err) {
       console.error('Lỗi lưu vận đơn vào PostgreSQL:', err.message);
+      alert(`Lỗi tạo vận đơn: ${err.message}`);
     }
   };
 
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = (user, token) => {
     setCurrentUser(user);
     if (user.role) {
       setRole(user.role);
@@ -150,7 +167,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('freshfarm_token');
     setCurrentUser(null);
+    setRole('consumer');
     setIsAuthModalOpen(false);
   };
 

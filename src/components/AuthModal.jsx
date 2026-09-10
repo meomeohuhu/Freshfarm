@@ -29,8 +29,11 @@ export default function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess
       if (isLoginMode) {
         // Login API
         const res = await apiService.login(formData.email, formData.password);
+        if (res.token) {
+          localStorage.setItem('freshfarm_token', res.token);
+        }
         setSuccessMsg('Đăng nhập thành công!');
-        onLoginSuccess(res.user);
+        onLoginSuccess(res.user, res.token);
         setTimeout(() => {
           onClose();
           setSuccessMsg('');
@@ -38,8 +41,15 @@ export default function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess
       } else {
         // Register API
         const res = await apiService.register(formData);
-        setSuccessMsg('Đăng ký tài khoản mới thành công! Vui lòng đăng nhập.');
-        setIsLoginMode(true);
+        if (res.token) {
+          localStorage.setItem('freshfarm_token', res.token);
+        }
+        setSuccessMsg('Đăng ký tài khoản thành công! Tự động đăng nhập...');
+        onLoginSuccess(res.user, res.token);
+        setTimeout(() => {
+          onClose();
+          setSuccessMsg('');
+        }, 1000);
       }
     } catch (err) {
       setErrorMsg(err.message || 'Thao tác không thành công. Vui lòng kiểm tra lại.');
