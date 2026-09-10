@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { initDatabase, query, queryOne, isPgConnected } from './db.js';
+import { initDatabase, query, queryOne, isPgConnected, sqliteDb, isMemoryDbActive } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,7 +21,7 @@ app.get('/api/health', async (req, res) => {
     res.json({
       status: 'OK',
       message: 'FreshFarm Express Backend REST API running',
-      database: isPgConnected ? 'PostgreSQL 14+ (pg Pool)' : 'SQLite3 Fallback',
+      database: isPgConnected ? 'PostgreSQL 14+ (pg Pool)' : (sqliteDb ? 'SQLite3 Fallback' : 'In-Memory Store Engine (Zero-Config Active)'),
       stats: { users: parseInt(userCount?.count || 0, 10), products: parseInt(prodCount?.count || 0, 10) },
       adminAccount: { email: 'admin@freshfarm.vn', password: 'admin123', role: 'admin' }
     });
