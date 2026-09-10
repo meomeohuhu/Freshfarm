@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Truck, PlusCircle, CheckCircle2, Clock, MapPin, DollarSign, Package, Search, ShieldCheck, ArrowRight } from 'lucide-react';
 
-export default function TransporterView({ orders, shippingBills = [], setShippingBills, onCreateShippingBill, onUpdateOrderStatus }) {
+export default function TransporterView({ orders, shippingBills = [], setShippingBills, onCreateShippingBill, onUpdateOrderStatus, onUpdateShippingStatus }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBill, setNewBill] = useState({
     orderId: '',
@@ -34,7 +34,9 @@ export default function TransporterView({ orders, shippingBills = [], setShippin
   };
 
   const updateBillStatus = (billId, newStatus) => {
-    if (setShippingBills) {
+    if (onUpdateShippingStatus) {
+      onUpdateShippingStatus(billId, newStatus);
+    } else if (setShippingBills) {
       setShippingBills(shippingBills.map(b => b.id === billId ? { ...b, status: newStatus } : b));
     }
   };

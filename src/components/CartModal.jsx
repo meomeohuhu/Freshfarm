@@ -36,12 +36,12 @@ export default function CartModal({
 
   const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const handleCheckoutSubmit = (e) => {
+  const handleCheckoutSubmit = async (e) => {
     e.preventDefault();
     const newOrderId = `ORD-${Date.now().toString().slice(-8)}`;
     setLastOrderId(newOrderId);
 
-    onPlaceOrder({
+    const saved = await onPlaceOrder({
       id: newOrderId,
       customerName: formData.name,
       phone: formData.phone,
@@ -55,7 +55,7 @@ export default function CartModal({
       statusText: 'Đơn hàng mới - Chờ kho tiếp nhận'
     });
 
-    setStep('success');
+    if (saved !== false) setStep('success');
   };
 
   const handleFinish = () => {

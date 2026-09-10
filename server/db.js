@@ -93,6 +93,46 @@ export async function queryOne(sql, params = []) {
   return rows[0] || null;
 }
 
+async function hasColumn(tableName, columnName) {
+  const row = await queryOne(
+    `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?`,
+    [tableName, columnName]
+  );
+  return Boolean(row);
+}
+
+async function ensureColumn(tableName, columnName, definition) {
+  if (!(await hasColumn(tableName, columnName))) {
+    await query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+async function runCompatibilityMigrations() {
+  // CREATE TABLE IF NOT EXISTS does not alter databases created by older builds.
+  // Keep legacy columns during the transition and backfill the new canonical ones.
+  await ensureColumn('products', 'category_id', 'VARCHAR(50)');
+  if (await hasColumn('products', 'category')) {
+    await query("UPDATE products SET category_id = COALESCE(category_id, category) WHERE category_id IS NULL");
+  }
+
+  await ensureColumn('harvest_batches', 'producer_id', 'VARCHAR(50)');
+  await ensureColumn('harvest_batches', 'producer_name', 'VARCHAR(150)');
+  if (await hasColumn('harvest_batches', 'producer')) {
+    await query("UPDATE harvest_batches SET producer_name = COALESCE(producer_name, producer) WHERE producer_name IS NULL");
+  }
+
+  await ensureColumn('orders', 'customer_id', 'VARCHAR(50)');
+  await ensureColumn('orders', 'voucher_code', 'VARCHAR(50)');
+  await ensureColumn('orders', 'discount_amount', 'NUMERIC(12,2) DEFAULT 0');
+  await query("UPDATE orders o SET customer_id = u.id FROM users u WHERE o.customer_id IS NULL AND o.customer_name = u.name");
+  await query("UPDATE orders SET discount_amount = 0 WHERE discount_amount IS NULL");
+
+  await ensureColumn('promotions', 'usage_limit', 'INT DEFAULT 100');
+  await ensureColumn('promotions', 'times_used', 'INT DEFAULT 0');
+  await query("UPDATE promotions SET usage_limit = 100 WHERE usage_limit IS NULL");
+  await query("UPDATE promotions SET times_used = 0 WHERE times_used IS NULL");
+}
+
 // Audit Logger Helper
 export async function createAuditLog(userId, action, target, details = '') {
   try {
@@ -263,6 +303,8 @@ export async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await runCompatibilityMigrations();
 
     // Seed Categories if empty
     const catCheck = await pgPool.query('SELECT COUNT(*) FROM categories');

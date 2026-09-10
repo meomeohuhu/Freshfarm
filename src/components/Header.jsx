@@ -24,7 +24,8 @@ export default function Header({
   searchQuery, 
   setSearchQuery,
   currentUser,
-  openAuthModal
+  openAuthModal,
+  openProfile
 }) {
   const [rbacAlert, setRbacAlert] = useState(null);
 
@@ -166,7 +167,7 @@ export default function Header({
           )}
 
           <div 
-            onClick={openAuthModal}
+            onClick={currentUser && openProfile ? openProfile : openAuthModal}
             className="flex items-center gap-2 pl-2 border-l border-emerald-700/60 cursor-pointer hover:opacity-90 transition-opacity"
             title="Đăng nhập / Xem tài khoản"
           >

@@ -25,8 +25,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(distPath));
 
-// Initialize 12 PostgreSQL Tables on startup
-initDatabase();
+// Initialize 12 PostgreSQL Tables on startup. API requests wait for the
+// compatibility migration so older Render databases cannot receive an order
+// before columns such as orders.customer_id have been added.
+const databaseReady = initDatabase();
 
 // ----------------------------------------------------
 // Auth & RBAC Middlewares
@@ -63,6 +65,15 @@ const requireRole = (...roles) => {
 };
 
 app.use(authMiddleware);
+app.use(async (req, res, next) => {
+  if (req.path === '/api/health') return next();
+  try {
+    await databaseReady;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ----------------------------------------------------
 // Healthcheck & DB Engine Status
@@ -177,6 +188,42 @@ app.get('/api/me', requireAuth, async (req, res) => {
   }
 });
 
+app.put('/api/me', requireAuth, async (req, res) => {
+  try {
+    const { name, phone, address } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Họ tên không được để trống' });
+    }
+    await query(
+      'UPDATE users SET name = ?, phone = ?, address = ? WHERE id = ?',
+      [String(name).trim(), phone || '', address || '', req.user.id]
+    );
+    await createAuditLog(req.user.id, 'UPDATE_PROFILE', req.user.id, 'Cập nhật thông tin cá nhân');
+    const user = await queryOne('SELECT id, name, email, role, phone, address, status, created_at FROM users WHERE id = ?', [req.user.id]);
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/me/password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+    }
+    const user = await queryOne('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    if (!user || !verifyPassword(currentPassword, user.password)) {
+      return res.status(400).json({ error: 'Mật khẩu hiện tại không chính xác' });
+    }
+    await query('UPDATE users SET password = ? WHERE id = ?', [hashPassword(newPassword), req.user.id]);
+    await createAuditLog(req.user.id, 'CHANGE_PASSWORD', req.user.id, 'Đổi mật khẩu thành công');
+    res.json({ message: 'Đổi mật khẩu thành công' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/users', requireRole('admin'), async (req, res) => {
   try {
     const users = await query('SELECT id, name, email, role, phone, address, status, created_at FROM users ORDER BY created_at DESC');
@@ -219,6 +266,7 @@ app.get('/api/products', async (req, res) => {
     const products = await query('SELECT * FROM products ORDER BY id DESC');
     const formatted = products.map(p => ({
       ...p,
+      category: p.category || p.category_id || 'veggies',
       price: parseFloat(p.price),
       rating: parseFloat(p.rating || 5.0),
       reviewsCount: parseInt(p.reviews_count || p.reviewsCount || 0, 10),
@@ -267,7 +315,7 @@ app.get('/api/batches', async (req, res) => {
       id: b.id,
       productName: b.product_name,
       producerId: b.producer_id,
-      producer: b.producer_name,
+      producer: b.producer_name || b.producer || '',
       quantity: b.quantity,
       harvestDate: b.harvest_date,
       status: b.status,
@@ -391,7 +439,7 @@ app.post('/api/promotions/validate', async (req, res) => {
 // ----------------------------------------------------
 // M03, M04, M05: Orders & Pipeline Enforcement
 // ----------------------------------------------------
-app.get('/api/orders', async (req, res) => {
+app.get('/api/orders', requireAuth, async (req, res) => {
   try {
     let sql = 'SELECT * FROM orders ORDER BY created_at DESC';
     let params = [];
@@ -428,7 +476,7 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', requireAuth, async (req, res) => {
   try {
     const o = req.body;
     if (!o.items || !Array.isArray(o.items) || o.items.length === 0) {
@@ -436,8 +484,8 @@ app.post('/api/orders', async (req, res) => {
     }
 
     const orderId = o.id || `ORD-${Date.now().toString().slice(-8)}`;
-    const customerId = req.user ? req.user.id : 'GUEST';
-    const customerName = req.user ? req.user.name : (o.customerName || 'Khách hàng vãng lai');
+    const customerId = req.user.id;
+    const customerName = req.user.name;
 
     // Recalculate price & check stock on Backend (Do not trust frontend total)
     let calculatedTotal = 0;
@@ -526,6 +574,10 @@ app.put('/api/orders/:id/status', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
     }
 
+    if (req.user.role === 'consumer' && currentOrder.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Ban khong co quyen thao tac tren don hang nay' });
+    }
+
     const prevStatus = currentOrder.order_status;
 
     // Strict Pipeline Validation Rules
@@ -551,8 +603,6 @@ app.put('/api/orders/:id/status', requireAuth, async (req, res) => {
       if (!['admin', 'transporter', 'consumer'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Chỉ Vận chuyển hoặc Khách hàng mới có quyền xác nhận hoàn thành đơn' });
       }
-      // Update payment status to paid upon completion
-      await query("UPDATE orders SET payment_status = 'paid' WHERE id = ?", [id]);
     } else if (orderStatus === 'Cancelled') {
       if (prevStatus !== 'Pending' && req.user.role !== 'admin') {
         return res.status(400).json({ error: 'Đơn hàng chỉ có thể hủy khi đang ở trạng thái Pending (Chờ xác nhận)' });
@@ -573,9 +623,11 @@ app.put('/api/orders/:id/status', requireAuth, async (req, res) => {
 // ----------------------------------------------------
 // M08: Transporter & Shipping Bills
 // ----------------------------------------------------
-app.get('/api/shipping', async (req, res) => {
+app.get('/api/shipping', requireAuth, async (req, res) => {
   try {
-    const bills = await query('SELECT * FROM shipping_bills ORDER BY created_at DESC');
+    const bills = req.user.role === 'consumer'
+      ? await query('SELECT sb.* FROM shipping_bills sb JOIN orders o ON o.id = sb.order_id WHERE o.customer_id = ? ORDER BY sb.created_at DESC', [req.user.id])
+      : await query('SELECT * FROM shipping_bills ORDER BY created_at DESC');
     res.json(bills.map(b => ({
       id: b.id,
       orderId: b.order_id,
@@ -636,7 +688,7 @@ app.put('/api/shipping/:id/status', requireRole('admin', 'transporter'), async (
     await query('UPDATE shipping_bills SET status = ? WHERE id = ?', [status, id]);
 
     if (status.includes('thành công') || status === 'Delivered') {
-      await query("UPDATE orders SET order_status = 'Completed', payment_status = 'paid', status_text = 'Giao hàng thành công' WHERE id = ?", [bill.order_id]);
+      await query("UPDATE orders SET order_status = 'Completed', status_text = 'Giao hàng thành công' WHERE id = ?", [bill.order_id]);
     }
 
     await createAuditLog(req.user.id, 'UPDATE_SHIPPING_STATUS', id, `Cập nhật vận đơn ${id} thành ${status}`);

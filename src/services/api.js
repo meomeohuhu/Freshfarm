@@ -44,6 +44,8 @@ export const apiService = {
   login: (email, password) => apiRequest('/auth/login', 'POST', { email, password }),
   register: (userData) => apiRequest('/auth/register', 'POST', userData),
   getMe: () => apiRequest('/me'),
+  updateMe: (profile) => apiRequest('/me', 'PUT', profile),
+  changePassword: (passwordData) => apiRequest('/me/password', 'PUT', passwordData),
 
   // Products
   getProducts: () => apiRequest('/products'),

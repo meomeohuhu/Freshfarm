@@ -9,6 +9,8 @@ import DatabaseView from './components/DatabaseView';
 import CartModal from './components/CartModal';
 import TraceabilityModal from './components/TraceabilityModal';
 import AuthModal from './components/AuthModal';
+import ProfileView from './components/ProfileView';
+import OrderManagementView from './components/OrderManagementView';
 import { apiService } from './services/api';
 
 export default function App() {
@@ -33,34 +35,30 @@ export default function App() {
   const [activeTraceabilityProduct, setActiveTraceabilityProduct] = useState(null);
 
   // Fetch live real data from PostgreSQL API
-  const refreshAllData = async () => {
-    try {
-      const fetchedProds = await apiService.getProducts();
-      if (fetchedProds) setProducts(fetchedProds);
-
-      const fetchedBatches = await apiService.getBatches();
-      if (fetchedBatches) setBatches(fetchedBatches);
-
-      const fetchedOrders = await apiService.getOrders();
-      if (fetchedOrders) setOrders(fetchedOrders);
-
-      const fetchedUsers = await apiService.getUsers();
-      if (fetchedUsers) setUsersList(fetchedUsers);
-
-      const fetchedShipping = await apiService.getShippingBills();
-      if (fetchedShipping) setShippingBills(fetchedShipping);
-    } catch (err) {
-      console.warn('⚠️ API fetch error:', err.message);
+  const refreshAllData = async (userOverride = currentUser) => {
+    const token = localStorage.getItem('freshfarm_token');
+    const tasks = [
+      apiService.getProducts().then(setProducts),
+      apiService.getBatches().then(setBatches)
+    ];
+    if (token) {
+      tasks.push(apiService.getOrders().then(setOrders));
+      tasks.push(apiService.getShippingBills().then(setShippingBills));
     }
+    if (userOverride?.role === 'admin') tasks.push(apiService.getUsers().then(setUsersList));
+    const results = await Promise.allSettled(tasks);
+    results.filter(r => r.status === 'rejected').forEach(r => console.warn('⚠️ API fetch error:', r.reason?.message));
   };
 
   useEffect(() => {
     async function initSession() {
       const token = localStorage.getItem('freshfarm_token');
+      let restoredUser = null;
       if (token) {
         try {
           const user = await apiService.getMe();
           if (user) {
+            restoredUser = user;
             setCurrentUser(user);
             if (user.role) setRole(user.role);
           }
@@ -68,7 +66,7 @@ export default function App() {
           localStorage.removeItem('freshfarm_token');
         }
       }
-      await refreshAllData();
+      await refreshAllData(restoredUser);
     }
     initSession();
   }, []);
@@ -103,18 +101,22 @@ export default function App() {
   };
 
   const handlePlaceOrder = async (newOrder) => {
-    setOrders(prev => [newOrder, ...prev]);
+    if (!currentUser) {
+      alert('Vui lòng đăng nhập trước khi đặt hàng.');
+      return false;
+    }
     try {
       await apiService.createOrder(newOrder);
       await refreshAllData();
+      return true;
     } catch (err) {
       console.error('Lỗi lưu đơn hàng vào PostgreSQL:', err.message);
       alert(`Lỗi đặt hàng: ${err.message}`);
+      return false;
     }
   };
 
   const handleCreateBatch = async (newBatch) => {
-    setBatches(prev => [newBatch, ...prev]);
     try {
       await apiService.createBatch(newBatch);
       await refreshAllData();
@@ -125,7 +127,6 @@ export default function App() {
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus, statusText) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, orderStatus: newStatus, statusText } : o));
     try {
       await apiService.updateOrderStatus(orderId, newStatus, statusText);
       await refreshAllData();
@@ -137,7 +138,6 @@ export default function App() {
 
   const handleToggleUserStatus = async (userId, currentStatus) => {
     const nextStatus = currentStatus === 'Hoạt động' || currentStatus === 'active' ? 'blocked' : 'active';
-    setUsersList(prev => prev.map(u => u.id === userId ? { ...u, status: nextStatus } : u));
     try {
       await apiService.toggleUserStatus(userId, nextStatus);
       await refreshAllData();
@@ -148,7 +148,6 @@ export default function App() {
   };
 
   const handleCreateShippingBill = async (bill) => {
-    setShippingBills(prev => [bill, ...prev]);
     try {
       await apiService.createShippingBill(bill);
       await refreshAllData();
@@ -158,13 +157,29 @@ export default function App() {
     }
   };
 
+  const handleUpdateShippingStatus = async (billId, status) => {
+    try {
+      await apiService.updateShippingStatus(billId, status);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Lỗi cập nhật trạng thái vận đơn:', err.message);
+      alert(`Lỗi cập nhật vận đơn: ${err.message}`);
+    }
+  };
+
   const handleLoginSuccess = (user, token) => {
     setCurrentUser(user);
     if (user.role) {
       setRole(user.role);
     }
-    refreshAllData();
+    refreshAllData(user);
   };
+
+  const handleProfileSaved = (user) => {
+    setCurrentUser(user);
+  };
+
+  const openProfile = () => setRole('profile');
 
   const handleLogout = () => {
     localStorage.removeItem('freshfarm_token');
@@ -185,6 +200,7 @@ export default function App() {
         setSearchQuery={setSearchQuery}
         currentUser={currentUser}
         openAuthModal={() => setIsAuthModalOpen(true)}
+        openProfile={openProfile}
       />
 
       {/* Main Content Area based on Selected Role */}
@@ -224,6 +240,7 @@ export default function App() {
             setShippingBills={setShippingBills}
             onCreateShippingBill={handleCreateShippingBill}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            onUpdateShippingStatus={handleUpdateShippingStatus}
           />
         )}
 
@@ -234,6 +251,19 @@ export default function App() {
             batches={batches}
             usersList={usersList}
             onToggleUserStatus={handleToggleUserStatus}
+          />
+        )}
+
+        {currentRole === 'profile' && (
+          <ProfileView currentUser={currentUser} onSaved={handleProfileSaved} onLogout={handleLogout} />
+        )}
+
+        {currentUser && ['consumer', 'producer', 'admin'].includes(currentRole) && (
+          <OrderManagementView
+            orders={orders}
+            role={currentRole}
+            currentUser={currentUser}
+            onUpdateStatus={handleUpdateOrderStatus}
           />
         )}
 
